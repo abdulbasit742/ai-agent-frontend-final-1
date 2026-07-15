@@ -141,7 +141,7 @@ const TaskCard = ({ task, onUpdate, onDelete, canDelete = false }) => {
         {task.description && <CardDescription className="line-clamp-3 pt-2">{task.description}</CardDescription>}
       </CardHeader>
 
-      <CardContent className="flex h-[calc(100%-8rem)] flex-col justify-between gap-5">
+      <CardContent className="flex flex-col justify-between gap-5">
         <div className="space-y-3 text-sm text-gray-600">
           {dueLabel && (
             <div className={`flex items-center gap-2 ${overdue ? 'font-medium text-red-700' : ''}`}>
