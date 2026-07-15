@@ -1,327 +1,182 @@
-/**
- * TaskCard Component - Individual Task Display and Management
- * Compatible with Flask JWT backend
- */
-
 import { useState } from 'react';
-import { Button } from './ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Badge } from './ui/badge';
-import { 
-  Clock, 
-  User, 
-  Calendar, 
-  CheckCircle, 
-  Play, 
-  Pause,
+import {
   AlertCircle,
   Bot,
-  MessageSquare,
-  Edit,
-  Trash2
+  Calendar,
+  CheckCircle,
+  Clock,
+  Edit3,
+  Pause,
+  Play,
+  Trash2,
+  User,
 } from 'lucide-react';
+
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { apiUtils } from '../services/api';
-import '../App.css';
 
-const TaskCard = ({ task, onUpdate, isAdmin = false }) => {
-  const [updating, setUpdating] = useState(false);
+const PRIORITY_STYLES = {
+  urgent: 'bg-red-100 text-red-800 border-red-200',
+  high: 'bg-orange-100 text-orange-800 border-orange-200',
+  medium: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  low: 'bg-green-100 text-green-800 border-green-200',
+};
 
-  const handleStatusChange = async (newStatus) => {
-    if (updating) return;
-    
-    setUpdating(true);
+const STATUS_STYLES = {
+  pending: 'bg-gray-100 text-gray-800 border-gray-200',
+  in_progress: 'bg-blue-100 text-blue-800 border-blue-200',
+  completed: 'bg-green-100 text-green-800 border-green-200',
+};
+
+function dueDateLabel(dateString) {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return 'Invalid due date';
+
+  const now = new Date();
+  const dayDifference = Math.ceil((date.getTime() - now.getTime()) / 86_400_000);
+  if (dayDifference < 0) return `Overdue by ${Math.abs(dayDifference)} day${Math.abs(dayDifference) === 1 ? '' : 's'}`;
+  if (dayDifference === 0) return 'Due today';
+  if (dayDifference === 1) return 'Due tomorrow';
+  return `Due in ${dayDifference} days`;
+}
+
+const TaskCard = ({ task, onUpdate, onDelete, canDelete = false }) => {
+  const [action, setAction] = useState(null);
+  const dueLabel = dueDateLabel(task.due_date);
+  const overdue = Boolean(task.is_overdue) || (dueLabel?.startsWith('Overdue') && task.status !== 'completed');
+
+  const runUpdate = async (status) => {
+    if (action) return;
+    setAction(status);
     try {
-      await onUpdate(task.id, { status: newStatus });
-    } catch (error) {
-      console.error('Failed to update task status:', error);
+      await onUpdate(task.id, { status });
     } finally {
-      setUpdating(false);
+      setAction(null);
     }
   };
 
-  const getStatusButton = () => {
-    switch (task.status) {
-      case 'pending':
-        return (
-          <Button
-            size="sm"
-            onClick={() => handleStatusChange('in_progress')}
-            disabled={updating}
-            className="w-full"
-          >
-            <Play className="h-4 w-4 mr-2" />
-            Start Task
-          </Button>
-        );
-      case 'in_progress':
-        return (
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleStatusChange('pending')}
-              disabled={updating}
-              className="flex-1"
-            >
-              <Pause className="h-4 w-4 mr-2" />
-              Pause
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => handleStatusChange('completed')}
-              disabled={updating}
-              className="flex-1"
-            >
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Complete
-            </Button>
-          </div>
-        );
-      case 'completed':
-        return (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => handleStatusChange('in_progress')}
-            disabled={updating}
-            className="w-full"
-          >
-            <Edit className="h-4 w-4 mr-2" />
-            Reopen
-          </Button>
-        );
-      default:
-        return null;
-    }
-  };
+  const runDelete = async () => {
+    if (action || !onDelete) return;
+    const confirmed = window.confirm(`Delete “${task.title}”? This action cannot be undone.`);
+    if (!confirmed) return;
 
-  const getPriorityColor = (priority) => {
-    const colors = {
-      urgent: 'bg-red-100 text-red-800 border-red-200',
-      high: 'bg-orange-100 text-orange-800 border-orange-200',
-      medium: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      low: 'bg-green-100 text-green-800 border-green-200'
-    };
-    return colors[priority] || colors.medium;
-  };
-
-  const getStatusColor = (status) => {
-    const colors = {
-      pending: 'bg-gray-100 text-gray-800 border-gray-200',
-      in_progress: 'bg-blue-100 text-blue-800 border-blue-200',
-      completed: 'bg-green-100 text-green-800 border-green-200'
-    };
-    return colors[status] || colors.pending;
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'No deadline';
-    
+    setAction('delete');
     try {
-      const date = new Date(dateString);
-      const now = new Date();
-      const diffTime = date - now;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      if (diffDays < 0) {
-        return `Overdue by ${Math.abs(diffDays)} day${Math.abs(diffDays) !== 1 ? 's' : ''}`;
-      } else if (diffDays === 0) {
-        return 'Due today';
-      } else if (diffDays === 1) {
-        return 'Due tomorrow';
-      } else {
-        return `Due in ${diffDays} days`;
-      }
-    } catch (error) {
-      return 'Invalid date';
+      await onDelete(task.id);
+    } finally {
+      setAction(null);
     }
   };
 
-  const isOverdue = (dateString) => {
-    if (!dateString) return false;
-    try {
-      const date = new Date(dateString);
-      const now = new Date();
-      return date < now && task.status !== 'completed';
-    } catch (error) {
-      return false;
+  const renderStatusAction = () => {
+    if (task.status === 'pending') {
+      return (
+        <Button className="w-full" size="sm" disabled={Boolean(action)} onClick={() => runUpdate('in_progress')}>
+          <Play className="mr-2 h-4 w-4" aria-hidden="true" /> Start task
+        </Button>
+      );
     }
+
+    if (task.status === 'in_progress') {
+      return (
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="outline" size="sm" disabled={Boolean(action)} onClick={() => runUpdate('pending')}>
+            <Pause className="mr-2 h-4 w-4" aria-hidden="true" /> Pause
+          </Button>
+          <Button size="sm" disabled={Boolean(action)} onClick={() => runUpdate('completed')}>
+            <CheckCircle className="mr-2 h-4 w-4" aria-hidden="true" /> Complete
+          </Button>
+        </div>
+      );
+    }
+
+    if (task.status === 'completed') {
+      return (
+        <Button className="w-full" variant="outline" size="sm" disabled={Boolean(action)} onClick={() => runUpdate('in_progress')}>
+          <Edit3 className="mr-2 h-4 w-4" aria-hidden="true" /> Reopen task
+        </Button>
+      );
+    }
+
+    return null;
   };
 
   return (
-    <Card className={`transition-all duration-200 hover:shadow-md ${
-      task.status === 'completed' ? 'opacity-75' : ''
-    } ${isOverdue(task.deadline) ? 'border-red-200 bg-red-50' : ''}`}>
+    <Card className={`h-full transition-shadow hover:shadow-md ${task.status === 'completed' ? 'opacity-80' : ''} ${overdue ? 'border-red-200' : ''}`} aria-busy={Boolean(action)}>
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <CardTitle className="text-lg font-semibold text-gray-900 mb-2">
-              {task.title}
-            </CardTitle>
-            <div className="flex items-center gap-2 mb-2">
-              <Badge className={getPriorityColor(task.priority)}>
-                {apiUtils.getPriorityEmoji(task.priority)} {task.priority?.toUpperCase()}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <CardTitle className="break-words text-lg leading-snug">{task.title}</CardTitle>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge className={PRIORITY_STYLES[task.priority] || PRIORITY_STYLES.medium}>
+                {apiUtils.getPriorityEmoji(task.priority)} {task.priority || 'medium'}
               </Badge>
-              <Badge className={getStatusColor(task.status)}>
-                {apiUtils.getStatusEmoji(task.status)} {task.status?.replace('_', ' ').toUpperCase()}
+              <Badge className={STATUS_STYLES[task.status] || STATUS_STYLES.pending}>
+                {apiUtils.getStatusEmoji(task.status)} {String(task.status || 'pending').replace('_', ' ')}
               </Badge>
               {task.is_ai_generated && (
-                <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-                  <Bot className="h-3 w-3 mr-1" />
-                  AI
+                <Badge variant="outline" className="border-purple-200 bg-purple-50 text-purple-700">
+                  <Bot className="mr-1 h-3 w-3" aria-hidden="true" /> AI generated
                 </Badge>
               )}
             </div>
           </div>
+          {canDelete && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="shrink-0 text-gray-500 hover:bg-red-50 hover:text-red-700"
+              onClick={runDelete}
+              disabled={Boolean(action)}
+              aria-label={`Delete ${task.title}`}
+            >
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          )}
         </div>
-        
-        {task.description && (
-          <CardDescription className="text-sm text-gray-600 line-clamp-2">
-            {task.description}
-          </CardDescription>
-        )}
+        {task.description && <CardDescription className="line-clamp-3 pt-2">{task.description}</CardDescription>}
       </CardHeader>
 
-      <CardContent className="pt-0">
-        {/* Task Details */}
-        <div className="space-y-3 mb-4">
-          {/* Deadline */}
-          {task.deadline && (
-            <div className="flex items-center text-sm">
-              <Calendar className="h-4 w-4 mr-2 text-gray-400" />
-              <span className={isOverdue(task.deadline) ? 'text-red-600 font-medium' : 'text-gray-600'}>
-                {formatDate(task.deadline)}
-              </span>
-              {isOverdue(task.deadline) && (
-                <AlertCircle className="h-4 w-4 ml-2 text-red-500" />
-              )}
+      <CardContent className="flex h-[calc(100%-8rem)] flex-col justify-between gap-5">
+        <div className="space-y-3 text-sm text-gray-600">
+          {dueLabel && (
+            <div className={`flex items-center gap-2 ${overdue ? 'font-medium text-red-700' : ''}`}>
+              {overdue ? <AlertCircle className="h-4 w-4" aria-hidden="true" /> : <Calendar className="h-4 w-4 text-gray-400" aria-hidden="true" />}
+              <span>{dueLabel}</span>
             </div>
           )}
-
-          {/* Estimated Hours */}
-          {task.estimated_hours && (
-            <div className="flex items-center text-sm text-gray-600">
-              <Clock className="h-4 w-4 mr-2 text-gray-400" />
-              <span>Est. {apiUtils.formatDuration(task.estimated_hours)}</span>
+          {Number(task.estimated_hours) > 0 && (
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-gray-400" aria-hidden="true" />
+              <span>Estimated {apiUtils.formatDuration(task.estimated_hours)}</span>
             </div>
           )}
-
-          {/* Assignee */}
-          {task.assignee_info && (
-            <div className="flex items-center text-sm text-gray-600">
-              <User className="h-4 w-4 mr-2 text-gray-400" />
+          {task.assignee_info?.username && (
+            <div className="flex items-center gap-2">
+              <User className="h-4 w-4 text-gray-400" aria-hidden="true" />
               <span>Assigned to {task.assignee_info.username}</span>
-              {task.assignee_info.performance_score && (
-                <Badge variant="outline" className="ml-2 text-xs">
-                  {task.assignee_info.performance_score}% score
-                </Badge>
-              )}
             </div>
           )}
-
-          {/* AI Context */}
           {task.is_ai_generated && task.ai_context && (
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-              <div className="flex items-center mb-1">
-                <Bot className="h-4 w-4 mr-2 text-purple-600" />
-                <span className="text-sm font-medium text-purple-800">AI Insight</span>
+            <div className="rounded-lg border border-purple-200 bg-purple-50 p-3 text-xs text-purple-800">
+              <div className="mb-1 flex items-center gap-2 font-medium">
+                <Bot className="h-3.5 w-3.5" aria-hidden="true" /> AI context
               </div>
-              <p className="text-xs text-purple-700 line-clamp-2">
-                {task.ai_context}
-              </p>
-            </div>
-          )}
-
-          {/* Difficulty Rating */}
-          {task.difficulty_rating && (
-            <div className="flex items-center text-sm text-gray-600">
-              <div className="flex items-center mr-2">
-                <span className="text-gray-400 mr-1">Difficulty:</span>
-                <div className="flex">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <div
-                      key={star}
-                      className={`w-3 h-3 rounded-full mr-1 ${
-                        star <= task.difficulty_rating
-                          ? 'bg-yellow-400'
-                          : 'bg-gray-200'
-                      }`}
-                    />
-                  ))}
-                </div>
-              </div>
-              <span className="text-xs">({task.difficulty_rating}/5)</span>
+              <p className="line-clamp-3">{task.ai_context}</p>
             </div>
           )}
         </div>
 
-        {/* Action Buttons */}
-        <div className="space-y-2">
-          {getStatusButton()}
-          
-          {/* Admin Actions */}
-          {isAdmin && (
-            <div className="flex gap-2 pt-2 border-t border-gray-100">
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  // Handle edit task
-                  console.log('Edit task:', task.id);
-                }}
-              >
-                <Edit className="h-4 w-4 mr-2" />
-                Edit
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  // Handle send notification
-                  console.log('Send notification for task:', task.id);
-                }}
-              >
-                <MessageSquare className="h-4 w-4 mr-2" />
-                Notify
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                onClick={() => {
-                  // Handle delete task
-                  if (confirm('Are you sure you want to delete this task?')) {
-                    console.log('Delete task:', task.id);
-                  }
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {/* Task Metadata */}
-        <div className="mt-4 pt-3 border-t border-gray-100 text-xs text-gray-500">
-          <div className="flex justify-between items-center">
-            <span>
-              Created {apiUtils.formatDate(task.created_at)}
-            </span>
-            {task.updated_at && task.updated_at !== task.created_at && (
-              <span>
-                Updated {apiUtils.formatDate(task.updated_at)}
-              </span>
-            )}
+        <div>
+          {renderStatusAction()}
+          <div className="mt-4 border-t pt-3 text-xs text-gray-500">
+            Created {apiUtils.formatDate(task.created_at)}
           </div>
-          {task.completed_at && (
-            <div className="mt-1">
-              <span className="text-green-600">
-                ✅ Completed {apiUtils.formatDate(task.completed_at)}
-              </span>
-            </div>
-          )}
+          {action && <span className="sr-only" role="status">Updating task…</span>}
         </div>
       </CardContent>
     </Card>
@@ -329,4 +184,3 @@ const TaskCard = ({ task, onUpdate, isAdmin = false }) => {
 };
 
 export default TaskCard;
-
