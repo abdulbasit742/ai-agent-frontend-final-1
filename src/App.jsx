@@ -1,131 +1,117 @@
-/**
- * App.jsx - Main Application Component
- * Compatible with Flask JWT backend
- */
+import { useCallback, useEffect, useState } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { Bot, Home, Loader2 } from 'lucide-react';
 
-import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { apiUtils } from './services/api';
-import Login from './components/Login';
+import { Button } from './components/ui/button';
 import Dashboard from './components/Dashboard';
+import Login from './components/Login';
+import { authAPI, apiUtils, tokenManager } from './services/api';
 import './App.css';
 
-// Protected Route Component
-const ProtectedRoute = ({ children }) => {
-  const isAuthenticated = apiUtils.isAuthenticated();
-  
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-  
-  return children;
-};
+function FullPageLoader() {
+  return (
+    <main className="min-h-screen bg-gray-50 flex items-center justify-center p-6" aria-busy="true">
+      <div className="text-center" role="status" aria-live="polite">
+        <Loader2 className="h-10 w-10 animate-spin text-blue-600 mx-auto mb-4" aria-hidden="true" />
+        <p className="font-medium text-gray-900">Loading AI Agent System</p>
+        <p className="text-sm text-gray-500 mt-1">Checking your session securely…</p>
+      </div>
+    </main>
+  );
+}
 
-// Public Route Component (redirect if already authenticated)
-const PublicRoute = ({ children }) => {
-  const isAuthenticated = apiUtils.isAuthenticated();
-  
-  if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
-  }
-  
+function ProtectedRoute({ authState, children }) {
+  if (authState === 'loading') return <FullPageLoader />;
+  if (authState !== 'authenticated') return <Navigate to="/login" replace />;
   return children;
-};
+}
+
+function PublicRoute({ authState, children }) {
+  if (authState === 'loading') return <FullPageLoader />;
+  if (authState === 'authenticated') return <Navigate to="/dashboard" replace />;
+  return children;
+}
+
+function NotFound() {
+  const navigate = useNavigate();
+  return (
+    <main className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+      <section className="w-full max-w-md rounded-2xl border bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50">
+          <Bot className="h-6 w-6 text-blue-600" aria-hidden="true" />
+        </div>
+        <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">404</p>
+        <h1 className="mt-2 text-2xl font-bold text-gray-900">Page not found</h1>
+        <p className="mt-2 text-gray-600">The page may have moved or the address may be incorrect.</p>
+        <Button className="mt-6" onClick={() => navigate(apiUtils.isAuthenticated() ? '/dashboard' : '/login')}>
+          <Home className="mr-2 h-4 w-4" aria-hidden="true" />
+          Return to the app
+        </Button>
+      </section>
+    </main>
+  );
+}
 
 function App() {
-  const [loading, setLoading] = useState(true);
+  const [authState, setAuthState] = useState('loading');
 
-  useEffect(() => {
-    // Initialize app
-    const initializeApp = async () => {
-      try {
-        // Check if user is already authenticated
-        const token = apiUtils.isAuthenticated();
-        if (token) {
-          // Validate token by making a test request
-          // This will automatically handle token refresh if needed
-          // If token is invalid, the interceptor will redirect to login
-        }
-      } catch (error) {
-        console.error('App initialization error:', error);
-        // Clear invalid tokens
-        apiUtils.clearAll();
-      } finally {
-        setLoading(false);
-      }
-    };
+  const validateSession = useCallback(async () => {
+    if (!apiUtils.isAuthenticated()) {
+      setAuthState('anonymous');
+      return;
+    }
 
-    initializeApp();
+    setAuthState('loading');
+    try {
+      await authAPI.getCurrentUser();
+      setAuthState('authenticated');
+    } catch {
+      tokenManager.clearAll({ notify: false });
+      setAuthState('anonymous');
+    }
   }, []);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading AI Agent System...</p>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    validateSession();
+
+    const handleAuthenticated = () => setAuthState('authenticated');
+    const handleExpired = () => setAuthState('anonymous');
+    window.addEventListener('auth:changed', handleAuthenticated);
+    window.addEventListener('auth:expired', handleExpired);
+
+    return () => {
+      window.removeEventListener('auth:changed', handleAuthenticated);
+      window.removeEventListener('auth:expired', handleExpired);
+    };
+  }, [validateSession]);
 
   return (
-    <Router>
-      <div className="App">
-        <Routes>
-          {/* Public Routes */}
-          <Route 
-            path="/login" 
-            element={
-              <PublicRoute>
-                <Login />
-              </PublicRoute>
-            } 
-          />
-          
-          {/* Protected Routes */}
-          <Route 
-            path="/dashboard" 
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            } 
-          />
-          
-          {/* Default Route */}
-          <Route 
-            path="/" 
-            element={
-              apiUtils.isAuthenticated() ? 
-                <Navigate to="/dashboard" replace /> : 
-                <Navigate to="/login" replace />
-            } 
-          />
-          
-          {/* Catch All Route */}
-          <Route 
-            path="*" 
-            element={
-              <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                <div className="text-center">
-                  <h1 className="text-4xl font-bold text-gray-900 mb-4">404</h1>
-                  <p className="text-gray-600 mb-4">Page not found</p>
-                  <button 
-                    onClick={() => window.location.href = '/dashboard'}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                  >
-                    Go to Dashboard
-                  </button>
-                </div>
-              </div>
-            } 
-          />
-        </Routes>
-      </div>
-    </Router>
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/login"
+          element={(
+            <PublicRoute authState={authState}>
+              <Login />
+            </PublicRoute>
+          )}
+        />
+        <Route
+          path="/dashboard"
+          element={(
+            <ProtectedRoute authState={authState}>
+              <Dashboard />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/"
+          element={<Navigate to={authState === 'authenticated' ? '/dashboard' : '/login'} replace />}
+        />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 
 export default App;
-
